@@ -54,7 +54,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: #f9f9f9;
+            background-color: #1a1a2e;
         }
 
         .canvas-container {
@@ -568,7 +568,7 @@
             setupScene() {
                 // Create scene
                 this.scene = new THREE.Scene();
-                this.scene.background = new THREE.Color(0xf9f9f9);
+                this.scene.background = new THREE.Color(0x1a1a2e); // Dark blue background
                 
                 // Create camera
                 this.camera = new THREE.PerspectiveCamera(
@@ -580,9 +580,14 @@
                 this.camera.position.set(20, 20, 40);
                 this.camera.lookAt(0, 0, 0);
                 
-                // Create renderer
-                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                // Create renderer with shadows enabled
+                this.renderer = new THREE.WebGLRenderer({ 
+                    antialias: true,
+                    shadowMapEnabled: true 
+                });
                 this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
                 this.container.appendChild(this.renderer.domElement);
                 
                 // Create orbit controls
@@ -591,18 +596,46 @@
                 this.controls.dampingFactor = 0.05;
                 
                 // Add ambient light
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                const ambientLight = new THREE.AmbientLight(0x404060, 0.6); // Blueish ambient light
                 this.scene.add(ambientLight);
                 
-                // Add directional light
+                // Add directional light with shadows
                 const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(1, 1, 1);
+                directionalLight.position.set(15, 30, 15);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                directionalLight.shadow.camera.near = 0.5;
+                directionalLight.shadow.camera.far = 100;
+                directionalLight.shadow.camera.left = -50;
+                directionalLight.shadow.camera.right = 50;
+                directionalLight.shadow.camera.top = 50;
+                directionalLight.shadow.camera.bottom = -50;
                 this.scene.add(directionalLight);
                 
-                // Add grid helper
-                const gridHelper = new THREE.GridHelper(100, 100, 0x888888, 0xdddddd);
+                // Add a secondary light source
+                const secondaryLight = new THREE.DirectionalLight(0xffffcc, 0.4); // Warm secondary light
+                secondaryLight.position.set(-5, 10, -10);
+                this.scene.add(secondaryLight);
+                
+                // Add grid helper - lighter color for better contrast with dark background
+                const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x666666);
                 gridHelper.position.y = -0.01;
                 this.scene.add(gridHelper);
+                
+                // Add floor plane to receive shadows
+                const floorGeometry = new THREE.PlaneGeometry(100, 100);
+                const floorMaterial = new THREE.MeshLambertMaterial({ 
+                    color: 0x222222, 
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.7
+                });
+                const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+                floor.rotation.x = Math.PI / 2;
+                floor.position.y = -0.02;
+                floor.receiveShadow = true;
+                this.scene.add(floor);
                 
                 // Add axes helper
                 const axesHelper = new THREE.AxesHelper(20);
@@ -700,20 +733,26 @@
                     // Calculate building dimensions
                     const width = right - left;
                     
-                    // Generate a semi-random color based on building properties
+                    // Generate a semi-random color based on building properties with brighter colors for better visibility
                     const hue = (left * 37 + height * 71) % 360;
-                    const color = new THREE.Color(`hsl(${hue}, 70%, 60%)`);
+                    const color = new THREE.Color(`hsl(${hue}, 85%, 65%)`);
                     
                     // Create geometry and material
                     const geometry = new THREE.BoxGeometry(width, height, buildingDepth);
-                    const material = new THREE.MeshLambertMaterial({ 
+                    const material = new THREE.MeshPhongMaterial({ 
                         color: color,
                         transparent: true,
-                        opacity: 0.7
+                        opacity: 0.85,
+                        shininess: 30,
+                        specular: 0x111111
                     });
                     
                     // Create mesh
                     const building = new THREE.Mesh(geometry, material);
+                    
+                    // Enable shadows
+                    building.castShadow = true;
+                    building.receiveShadow = true;
                     
                     // Position building (center of box is origin)
                     building.position.x = left + width / 2;
@@ -723,44 +762,36 @@
                     // Add to scene
                     this.scene.add(building);
                     
-                    // Add edges
+                    // Add edges with thicker lines for better visibility
                     const edges = new THREE.EdgesGeometry(geometry);
                     const line = new THREE.LineSegments(
                         edges,
-                        new THREE.LineBasicMaterial({ color: new THREE.Color(`hsl(${hue}, 70%, 40%)`) })
+                        new THREE.LineBasicMaterial({ 
+                            color: new THREE.Color(`hsl(${hue}, 90%, 40%)`),
+                            linewidth: 2
+                        })
                     );
                     line.position.copy(building.position);
                     this.scene.add(line);
                     
-                    // Add building number (as a 3D text)
-                    const loader = new THREE.FontLoader();
-                    const textGeometry = new THREE.TextGeometry((index + 1).toString(), {
-                        size: 0.8,
-                        height: 0.1,
-                    });
-                    const textMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
-                    const textParams = {
-                        font: 'Arial',
-                        size: 0.8,
-                        height: 0.1,
-                    };
-                    
-                    // Create a canvas-based text sprite instead of 3D text
+                    // Add building number as sprite with improved visibility
                     const canvas = document.createElement('canvas');
                     const context = canvas.getContext('2d');
-                    canvas.width = 64;
-                    canvas.height = 64;
-                    context.font = 'Bold 40px Arial';
+                    canvas.width = 128;
+                    canvas.height = 128;
+                    context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                    context.fillRect(0, 0, canvas.width, canvas.height);
+                    context.font = 'Bold 64px Arial';
                     context.textAlign = 'center';
                     context.textBaseline = 'middle';
                     context.fillStyle = '#000000';
-                    context.fillText((index + 1).toString(), 32, 32);
+                    context.fillText((index + 1).toString(), 64, 64);
                     
                     const texture = new THREE.CanvasTexture(canvas);
                     const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
                     const sprite = new THREE.Sprite(spriteMaterial);
-                    sprite.scale.set(2, 2, 1);
-                    sprite.position.set(left + width / 2, height / 2, buildingDepth / 2 + 0.1);
+                    sprite.scale.set(2.5, 2.5, 1);
+                    sprite.position.set(left + width / 2, height / 2, buildingDepth / 2 + 0.2);
                     this.scene.add(sprite);
                 });
             }
@@ -790,10 +821,10 @@
                 // Create line geometry
                 const geometry = new THREE.BufferGeometry().setFromPoints(points);
                 
-                // Create line material
+                // Create line material with increased width and brighter color for better visibility
                 const material = new THREE.LineBasicMaterial({ 
-                    color: 0xef4444,  // Tailwind red-500
-                    linewidth: 3
+                    color: 0xff5555,  // Brighter red for better visibility on dark background
+                    linewidth: 4      // Thicker line (note: may be limited by WebGL)
                 });
                 
                 // Create line
@@ -801,6 +832,16 @@
                 
                 // Add to scene
                 this.scene.add(line);
+                
+                // Add glowing effect to the skyline line for better visibility
+                const glowMaterial = new THREE.LineBasicMaterial({
+                    color: 0xff8888,
+                    linewidth: 8,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                const glowLine = new THREE.Line(geometry, glowMaterial);
+                this.scene.add(glowLine);
                 
                 // Add skyline area visualization (transparent fill)
                 const shapePoints = [];
@@ -826,11 +867,14 @@
                 };
                 
                 const shapeGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-                const shapeMaterial = new THREE.MeshLambertMaterial({
-                    color: 0xef4444,
+                const shapeMaterial = new THREE.MeshPhongMaterial({
+                    color: 0xff4444,
+                    emissive: 0x330000,
                     transparent: true,
-                    opacity: 0.2,
-                    side: THREE.DoubleSide
+                    opacity: 0.3,
+                    side: THREE.DoubleSide,
+                    specular: 0xffffff,
+                    shininess: 50
                 });
                 
                 const shapeMesh = new THREE.Mesh(shapeGeometry, shapeMaterial);
