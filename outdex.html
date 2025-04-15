@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Skyline Problem Visualizer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js for 3D rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls for 3D navigation - Updated path -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- GSAP for animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+    <style>
+        /* Custom styles beyond Tailwind */
+        .tab-btn {
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .tab-btn:not(.active):hover {
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .btn-primary {
+            @apply bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded transition-colors;
+        }
+
+        .btn-secondary {
+            @apply bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 px-4 rounded transition-colors;
+        }
+
+        .buildings-list li {
+            @apply flex justify-between items-center p-2 border-b border-gray-200;
+        }
+
+        .buildings-list li:last-child {
+            @apply border-b-0;
+        }
+
+        .buildings-list button {
+            @apply text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded;
+        }
+
+        canvas {
+            background-color: #f9f9f9;
+        }
+
+        #three-canvas {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #f9f9f9;
+        }
+
+        .canvas-container {
+            position: relative;
+            min-height: 500px;
+        }
+
+        .fullscreen {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999;
+            background-color: white;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .view-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+        }
+
+        @media (max-width: 640px) {
+            .buildings-list {
+                max-height: 200px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center mb-8">3D Skyline Problem Visualizer</h1>
+        
+        <div class="flex flex-col gap-6">
+            <!-- Input Section -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex border-b border-gray-200 mb-4" id="tabs">
+                    <button class="tab-btn active py-2 px-4 border-b-2 border-blue-500 font-medium text-blue-600" 
+                            data-tab="array-input">Array Input</button>
+                    <button class="tab-btn py-2 px-4 font-medium text-gray-500 hover:text-gray-700" 
+                            data-tab="manual-input">Manual Input</button>
+                </div>
+                
+                <!-- Array Input Tab -->
+                <div class="tab-content active" id="array-input">
+                    <p class="mb-2">Enter building data as an array in the format: [[left1, right1, height1], [left2, right2, height2], ...]</p>
+                    <textarea id="buildings-input" 
+                              class="w-full h-32 p-3 border border-gray-300 rounded-md font-mono text-sm resize-y mb-4"
+                              placeholder="Example: [[2,9,10],[3,7,15],[5,12,12],[15,20,10],[19,24,8]]">[[2,9,10],[3,7,15],[5,12,12],[15,20,10],[19,24,8]]</textarea>
+                    <div class="flex flex-wrap gap-3">
+                        <button id="visualize-btn" class="btn-primary">Visualize</button>
+                        <button id="clear-btn" class="btn-secondary">Clear</button>
+                    </div>
+                </div>
+                
+                <!-- Manual Input Tab -->
+                <div class="tab-content hidden" id="manual-input">
+                    <div class="flex flex-wrap gap-3 mb-4">
+                        <input type="number" id="left-input" placeholder="Left (x)" min="0"
+                               class="flex-1 min-w-[120px] p-2 border border-gray-300 rounded-md">
+                        <input type="number" id="right-input" placeholder="Right (x)" min="0"
+                               class="flex-1 min-w-[120px] p-2 border border-gray-300 rounded-md">
+                        <input type="number" id="height-input" placeholder="Height" min="1"
+                               class="flex-1 min-w-[120px] p-2 border border-gray-300 rounded-md">
+                        <button id="add-building-btn" class="btn-primary">Add Building</button>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <h3 class="font-medium mb-2">Current Buildings:</h3>
+                        <div id="buildings-list-container" class="buildings-list border border-gray-200 rounded-md max-h-48 overflow-y-auto"></div>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-3">
+                        <button id="visualize-manual-btn" class="btn-primary">Visualize</button>
+                        <button id="clear-manual-btn" class="btn-secondary">Clear All</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Visualization Section -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="canvas-container flex justify-center items-center overflow-hidden mb-4">
+                    <canvas id="skyline-canvas" width="1000" height="500"></canvas>
+                    <div id="three-canvas"></div>
+                    
+                    <div class="view-controls flex gap-2">
+                        <button id="toggle-view-btn" class="btn-primary flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M5 10a5 5 0 1110 0 5 5 0 01-10 0zm9 0a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" />
+                                <path d="M10 4a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 000-2h-3V5a1 1 0 00-1-1z" />
+                            </svg>
+                            Switch to 3D
+                        </button>
+                        
+                        <button id="fullscreen-btn" class="btn-secondary flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm2-1h10a1 1 0 011 1v10a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z" clip-rule="evenodd" />
+                                <path d="M5 5h2v2H5V5zm0 8h2v2H5v-2zm8-8h2v2h-2V5zm0 8h2v2h-2v-2z" />
+                            </svg>
+                            Fullscreen
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex flex-wrap justify-center gap-6 mb-4">
+                    <div class="flex items-center gap-2">
+                        <div class="w-5 h-5 bg-blue-400 bg-opacity-50 border border-blue-600"></div>
+                        <span>Buildings</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-5 h-5 border-2 border-red-500"></div>
+                        <span>Skyline</span>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-100 p-4 rounded-md">
+                    <h3 class="font-medium mb-2">Skyline Key Points:</h3>
+                    <div id="skyline-result" class="font-mono text-sm overflow-x-auto"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        /**
+         * Utility functions for the Skyline Visualization app
+         */
+
+        // Tab switching functionality
+        function setupTabs() {
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Remove active class from all buttons and contents
+                    tabButtons.forEach(btn => btn.classList.remove('active', 'border-blue-500', 'text-blue-600'));
+                    tabButtons.forEach(btn => btn.classList.add('text-gray-500'));
+                    tabContents.forEach(content => content.classList.add('hidden'));
+                    tabContents.forEach(content => content.classList.remove('active'));
+                    
+                    // Add active class to clicked button and corresponding content
+                    button.classList.add('active', 'border-blue-500', 'text-blue-600');
+                    button.classList.remove('text-gray-500');
+                    
+                    const tabId = button.getAttribute('data-tab');
+                    const tabContent = document.getElementById(tabId);
+                    tabContent.classList.remove('hidden');
+                    tabContent.classList.add('active');
+                });
+            });
+        }
+
+        // Make canvas responsive
+        function setupCanvas() {
+            const canvas = document.getElementById('skyline-canvas');
+            
+            function resizeCanvas() {
+                const container = document.querySelector('.canvas-container');
+                const containerWidth = container.clientWidth;
+                
+                if (containerWidth < 1000) {
+                    const aspectRatio = canvas.height / canvas.width;
+                    canvas.style.width = (containerWidth - 20) + 'px';
+                    canvas.style.height = ((containerWidth - 20) * aspectRatio) + 'px';
+                } else {
+                    canvas.style.width = '';
+                    canvas.style.height = '';
+                }
+            }
+            
+            // Initial resize and event listener
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            return { canvas, resizeCanvas };
+        }
+
+        // Parse building input array
+        function parseBuildingsInput(input) {
+            try {
+                const buildings = JSON.parse(input);
+                
+                if (!Array.isArray(buildings)) {
+                    throw new Error('Input must be an array');
+                }
+                
+                // Validate each building
+                buildings.forEach(building => {
+                    if (!Array.isArray(building) || building.length !== 3) {
+                        throw new Error('Each building must be an array with 3 elements [left, right, height]');
+                    }
+                    
+                    const [left, right, height] = building;
+                    
+                    if (typeof left !== 'number' || typeof right !== 'number' || typeof height !== 'number') {
+                        throw new Error('Building coordinates and height must be numbers');
+                    }
+                    
+                    if (left >= right) {
+                        throw new Error('Left position must be less than right position');
+                    }
+                    
+                    if (height <= 0) {
+                        throw new Error('Height must be greater than 0');
+                    }
+                });
+                
+                return buildings;
+            } catch (error) {
+                throw new Error(`Invalid input format: ${error.message}`);
+            }
+        }
+
+        /**
+         * Skyline algorithm implementation
+         * 
+         * This file contains the logic for computing the skyline from an array of buildings
+         */
+
+        /**
+         * Compute the skyline from an array of buildings
+         * @param {Array} buildings - Array of buildings in format [left, right, height]
+         * @returns {Array} Skyline key points in format [x, height]
+         */
+        function getSkyline(buildings) {
+            if (buildings.length === 0) return [];
+            
+            // Create events for building edges
+            const events = [];
+            
+            for (const [left, right, height] of buildings) {
+                events.push({ x: left, height, type: 'start' });
+                events.push({ x: right, height, type: 'end' });
+            }
+            
+            // Sort events by x-coordinate
+            events.sort((a, b) => {
+                if (a.x !== b.x) return a.x - b.x;
+                
+                // If same x, process starts before ends
+                if (a.type === 'start' && b.type === 'end') return -1;
+                if (a.type === 'end' && b.type === 'start') return 1;
+                
+                // For same type, process higher height first for start, lower height first for end
+                if (a.type === 'start') return b.height - a.height;
+                return a.height - b.height;
+            });
+            
+            const result = [];
+            const heights = new Map(); // Map to track active heights
+            let prevMaxHeight = 0;
+            
+            for (const event of events) {
+                if (event.type === 'start') {
+                    // Add this height to our active heights
+                    heights.set(event.height, (heights.get(event.height) || 0) + 1);
+                } else {
+                    // Remove this height from our active heights
+                    heights.set(event.height, heights.get(event.height) - 1);
+                    if (heights.get(event.height) === 0) {
+                        heights.delete(event.height);
+                    }
+                }
+                
+                // Get current max height
+                let currMaxHeight = 0;
+                for (const [height, count] of heights.entries()) {
+                    if (count > 0) {
+                        currMaxHeight = Math.max(currMaxHeight, height);
+                    }
+                }
+                
+                // If max height changed, add a key point
+                if (currMaxHeight !== prevMaxHeight) {
+                    result.push([event.x, currMaxHeight]);
+                    prevMaxHeight = currMaxHeight;
+                }
+            }
+            
+            return result;
+        }
+
+        /**
+         * Canvas renderer for skyline visualization
+         */
+        class SkylineRenderer {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.buildings = [];
+                this.skyline = [];
+                this.maxX = 0;
+                this.maxHeight = 0;
+            }
+            
+            /**
+             * Draw the skyline visualization
+             * @param {Array} buildings - Array of buildings in format [left, right, height]
+             * @param {Array} skyline - Array of skyline points in format [x, height]
+             */
+            draw(buildings, skyline) {
+                const { canvas, ctx } = this;
+                
+                // Store data for 3D renderer
+                this.buildings = buildings;
+                this.skyline = skyline;
+                
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Find max coordinates to scale drawings
+                let maxX = 0;
+                let maxHeight = 0;
+                
+                buildings.forEach(([left, right, height]) => {
+                    maxX = Math.max(maxX, right);
+                    maxHeight = Math.max(maxHeight, height);
+                });
+                
+                // Add padding
+                maxX += 2;
+                maxHeight += 2;
+                
+                this.maxX = maxX;
+                this.maxHeight = maxHeight;
+                
+                // Calculate scale factors and coordinates
+                const padding = 40;
+                const xScale = (canvas.width - padding * 2) / maxX;
+                const yScale = (canvas.height - padding * 2) / maxHeight;
+                const originX = padding;
+                const originY = canvas.height - padding;
+                
+                this._drawGrid(originX, originY, maxX, maxHeight, xScale, yScale);
+                this._drawAxes(originX, originY, maxX, maxHeight, xScale, yScale);
+                this._drawBuildings(buildings, originX, originY, xScale, yScale);
+                this._drawSkyline(skyline, originX, originY, xScale, yScale);
+            }
+            
+            /**
+             * Draw the coordinate grid
+             */
+            _drawGrid(originX, originY, maxX, maxHeight, xScale, yScale) {
+                const { ctx, canvas } = this;
+                
+                // Draw grid
+                ctx.strokeStyle = '#e5e7eb';  // Tailwind gray-200
+                ctx.lineWidth = 0.5;
+                
+                // X-grid
+                for (let x = 0; x <= maxX; x += Math.ceil(maxX / 10)) {
+                    const xPos = originX + x * xScale;
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, originY - maxHeight * yScale - 10);
+                    ctx.lineTo(xPos, originY);
+                    ctx.stroke();
+                }
+                
+                // Y-grid
+                for (let y = 0; y <= maxHeight; y += Math.ceil(maxHeight / 10)) {
+                    const yPos = originY - y * yScale;
+                    ctx.beginPath();
+                    ctx.moveTo(originX, yPos);
+                    ctx.lineTo(originX + maxX * xScale + 10, yPos);
+                    ctx.stroke();
+                }
+            }
+            
+            /**
+             * Draw the coordinate axes
+             */
+            _drawAxes(originX, originY, maxX, maxHeight, xScale, yScale) {
+                const { ctx } = this;
+                
+                // Draw coordinate axes
+                ctx.strokeStyle = '#6b7280';  // Tailwind gray-500
+                ctx.lineWidth = 1.5;
+                
+                // X-axis
+                ctx.beginPath();
+                ctx.moveTo(originX, originY);
+                ctx.lineTo(originX + maxX * xScale + 20, originY);
+                ctx.stroke();
+                
+                // Y-axis
+                ctx.beginPath();
+                ctx.moveTo(originX, originY);
+                ctx.lineTo(originX, originY - maxHeight * yScale - 20);
+                ctx.stroke();
+                
+                // Draw axis labels
+                ctx.fillStyle = '#374151';  // Tailwind gray-700
+                ctx.font = '12px system-ui, sans-serif';
+                
+                // X-axis labels
+                for (let x = 0; x <= maxX; x += Math.ceil(maxX / 10)) {
+                    const xPos = originX + x * xScale;
+                    ctx.fillText(x.toString(), xPos - 5, originY + 20);
+                    
+                    // Draw tick
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, originY);
+                    ctx.lineTo(xPos, originY + 5);
+                    ctx.stroke();
+                }
+                
+                // Y-axis labels
+                for (let y = 0; y <= maxHeight; y += Math.ceil(maxHeight / 10)) {
+                    const yPos = originY - y * yScale;
+                    ctx.fillText(y.toString(), originX - 25, yPos + 5);
+                    
+                    // Draw tick
+                    ctx.beginPath();
+                    ctx.moveTo(originX - 5, yPos);
+                    ctx.lineTo(originX, yPos);
+                    ctx.stroke();
+                }
+            }
+            
+            /**
+             * Draw the buildings
+             */
+            _drawBuildings(buildings, originX, originY, xScale, yScale) {
+                const { ctx } = this;
+                
+                buildings.forEach(([left, right, height], index) => {
+                    const x = originX + left * xScale;
+                    const y = originY - height * yScale;
+                    const width = (right - left) * xScale;
+                    const rectHeight = height * yScale;
+                    
+                    // Generate a semi-random color based on building properties
+                    const hue = (left * 37 + height * 71) % 360;
+                    ctx.fillStyle = `hsla(${hue}, 70%, 60%, 0.5)`;
+                    ctx.strokeStyle = `hsla(${hue}, 70%, 40%, 1)`;
+                    ctx.lineWidth = 1;
+                    
+                    ctx.fillRect(x, y, width, rectHeight);
+                    ctx.strokeRect(x, y, width, rectHeight);
+                    
+                    // Add building number
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.font = '14px system-ui, sans-serif';
+                    ctx.fillText((index + 1).toString(), x + width / 2 - 5, y + rectHeight / 2 + 5);
+                });
+            }
+            
+            /**
+             * Draw the skyline
+             */
+            _drawSkyline(skyline, originX, originY, xScale, yScale) {
+                const { ctx } = this;
+                
+                // Draw skyline
+                ctx.strokeStyle = '#ef4444';  // Tailwind red-500
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                
+                // Start at the first point
+                if (skyline.length > 0) {
+                    const [x0, y0] = skyline[0];
+                    ctx.moveTo(originX + x0 * xScale, originY - y0 * yScale);
+                    
+                    // Draw the rest of the skyline
+                    for (let i = 1; i < skyline.length; i++) {
+                        const [x, y] = skyline[i];
+                        const [prevX, prevY] = skyline[i-1];
+                        
+                        // Draw horizontal line from previous point
+                        ctx.lineTo(originX + x * xScale, originY - prevY * yScale);
+                        
+                        // Draw vertical line to new height
+                        ctx.lineTo(originX + x * xScale, originY - y * yScale);
+                    }
+                }
+                
+                ctx.stroke();
+            }
+        }
+
+        /**
+         * Three.js renderer for 3D skyline visualization
+         */
+        class SkylineThreeRenderer {
+            constructor(container) {
+                this.container = container;
+                this.buildings = [];
+                this.skyline = [];
+                this.maxX = 0;
+                this.maxHeight = 0;
+                
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.controls = null;
+                this.animationId = null;
+                
+                // Setup the scene
+                this.setupScene();
+                
+                // Listen for window resize
+                window.addEventListener('resize', this.onWindowResize.bind(this));
+            }
+            
+            setupScene() {
+                // Create scene
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0xf9f9f9);
+                
+                // Create camera
+                this.camera = new THREE.PerspectiveCamera(
+                    60,
+                    this.container.clientWidth / this.container.clientHeight,
+                    0.1,
+                    1000
+                );
+                this.camera.position.set(20, 20, 40);
+                this.camera.lookAt(0, 0, 0);
+                
+                // Create renderer
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+                this.container.appendChild(this.renderer.domElement);
+                
+                // Create orbit controls
+                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.enableDamping = true;
+                this.controls.dampingFactor = 0.05;
+                
+                // Add ambient light
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                this.scene.add(ambientLight);
+                
+                // Add directional light
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(1, 1, 1);
+                this.scene.add(directionalLight);
+                
+                // Add grid helper
+                const gridHelper = new THREE.GridHelper(100, 100, 0x888888, 0xdddddd);
+                gridHelper.position.y = -0.01;
+                this.scene.add(gridHelper);
+                
+                // Add axes helper
+                const axesHelper = new THREE.AxesHelper(20);
+                this.scene.add(axesHelper);
+                
+                // Start animation loop
+                this.animate();
+            }
+            
+            animate() {
+                this.animationId = requestAnimationFrame(this.animate.bind(this));
+                this.controls.update();
+                this.renderer.render(this.scene, this.camera);
+            }
+            
+            onWindowResize() {
+                if (!this.container.isConnected) return;
+                
+                this.camera.aspect = this.container.clientWidth / this.container.clientHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+            }
+            
+            /**
+             * Draw the skyline visualization in 3D
+             * @param {Array} buildings - Array of buildings in format [left, right, height]
+             * @param {Array} skyline - Array of skyline points in format [x, height]
+             * @param {Object} params - Additional parameters (maxX, maxHeight)
+             */
+            draw(buildings, skyline, { maxX, maxHeight }) {
+                // Store data
+                this.buildings = buildings;
+                this.skyline = skyline;
+                this.maxX = maxX;
+                this.maxHeight = maxHeight;
+                
+                // Clear previous objects
+                this.clearScene();
+                
+                // Draw buildings
+                this._drawBuildings(buildings);
+                
+                // Draw skyline
+                this._drawSkyline(skyline);
+                
+                // Position camera for best view
+                this.positionCamera();
+            }
+            
+            clearScene() {
+                // Remove all objects except lights, grid and axes
+                const objectsToRemove = [];
+                this.scene.traverse(object => {
+                    if (object.isMesh || object.isLine) {
+                        objectsToRemove.push(object);
+                    }
+                });
+                
+                objectsToRemove.forEach(object => {
+                    object.geometry.dispose();
+                    if (object.material) {
+                        if (Array.isArray(object.material)) {
+                            object.material.forEach(material => material.dispose());
+                        } else {
+                            object.material.dispose();
+                        }
+                    }
+                    this.scene.remove(object);
+                });
+            }
+            
+            positionCamera() {
+                // Calculate ideal camera position based on scene size
+                const depth = 5;  // Default depth for buildings
+                const cameraDistance = Math.max(this.maxX, this.maxHeight, depth) * 1.5;
+                
+                // Animate camera position
+                gsap.to(this.camera.position, {
+                    x: this.maxX / 2,
+                    y: this.maxHeight / 2,
+                    z: cameraDistance,
+                    duration: 1.5,
+                    ease: "power2.inOut",
+                    onComplete: () => {
+                        this.controls.target.set(this.maxX / 2, this.maxHeight / 4, 0);
+                        this.controls.update();
+                    }
+                });
+            }
+            
+            _drawBuildings(buildings) {
+                const buildingDepth = 5; // Default depth for all buildings
+                
+                buildings.forEach(([left, right, height], index) => {
+                    // Calculate building dimensions
+                    const width = right - left;
+                    
+                    // Generate a semi-random color based on building properties
+                    const hue = (left * 37 + height * 71) % 360;
+                    const color = new THREE.Color(`hsl(${hue}, 70%, 60%)`);
+                    
+                    // Create geometry and material
+                    const geometry = new THREE.BoxGeometry(width, height, buildingDepth);
+                    const material = new THREE.MeshLambertMaterial({ 
+                        color: color,
+                        transparent: true,
+                        opacity: 0.7
+                    });
+                    
+                    // Create mesh
+                    const building = new THREE.Mesh(geometry, material);
+                    
+                    // Position building (center of box is origin)
+                    building.position.x = left + width / 2;
+                    building.position.y = height / 2;
+                    building.position.z = 0;
+                    
+                    // Add to scene
+                    this.scene.add(building);
+                    
+                    // Add edges
+                    const edges = new THREE.EdgesGeometry(geometry);
+                    const line = new THREE.LineSegments(
+                        edges,
+                        new THREE.LineBasicMaterial({ color: new THREE.Color(`hsl(${hue}, 70%, 40%)`) })
+                    );
+                    line.position.copy(building.position);
+                    this.scene.add(line);
+                    
+                    // Add building number (as a 3D text)
+                    const loader = new THREE.FontLoader();
+                    const textGeometry = new THREE.TextGeometry((index + 1).toString(), {
+                        size: 0.8,
+                        height: 0.1,
+                    });
+                    const textMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+                    const textParams = {
+                        font: 'Arial',
+                        size: 0.8,
+                        height: 0.1,
+                    };
+                    
+                    // Create a canvas-based text sprite instead of 3D text
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.width = 64;
+                    canvas.height = 64;
+                    context.font = 'Bold 40px Arial';
+                    context.textAlign = 'center';
+                    context.textBaseline = 'middle';
+                    context.fillStyle = '#000000';
+                    context.fillText((index + 1).toString(), 32, 32);
+                    
+                    const texture = new THREE.CanvasTexture(canvas);
+                    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+                    const sprite = new THREE.Sprite(spriteMaterial);
+                    sprite.scale.set(2, 2, 1);
+                    sprite.position.set(left + width / 2, height / 2, buildingDepth / 2 + 0.1);
+                    this.scene.add(sprite);
+                });
+            }
+            
+            _drawSkyline(skyline) {
+                if (skyline.length === 0) return;
+                
+                // Create a line to represent the skyline
+                const points = [];
+                
+                // Start point
+                const [x0, y0] = skyline[0];
+                points.push(new THREE.Vector3(x0, y0, 0));
+                
+                // Draw the rest of the skyline with horizontal and vertical segments
+                for (let i = 1; i < skyline.length; i++) {
+                    const [x, y] = skyline[i];
+                    const [prevX, prevY] = skyline[i-1];
+                    
+                    // Add horizontal line from previous point
+                    points.push(new THREE.Vector3(x, prevY, 0));
+                    
+                    // Add vertical line to new height
+                    points.push(new THREE.Vector3(x, y, 0));
+                }
+                
+                // Create line geometry
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                
+                // Create line material
+                const material = new THREE.LineBasicMaterial({ 
+                    color: 0xef4444,  // Tailwind red-500
+                    linewidth: 3
+                });
+                
+                // Create line
+                const line = new THREE.Line(geometry, material);
+                
+                // Add to scene
+                this.scene.add(line);
+                
+                // Add skyline area visualization (transparent fill)
+                const shapePoints = [];
+                
+                // Add ground level points
+                shapePoints.push(new THREE.Vector2(skyline[0][0], 0));
+                
+                // Add skyline points
+                for (let i = 0; i < skyline.length; i++) {
+                    const [x, y] = skyline[i];
+                    shapePoints.push(new THREE.Vector2(x, y));
+                }
+                
+                // Add last ground point to close the shape
+                shapePoints.push(new THREE.Vector2(skyline[skyline.length-1][0], 0));
+                
+                // Create shape and extrude geometry
+                const shape = new THREE.Shape(shapePoints);
+                const extrudeSettings = {
+                    steps: 1,
+                    depth: 5,
+                    bevelEnabled: false
+                };
+                
+                const shapeGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                const shapeMaterial = new THREE.MeshLambertMaterial({
+                    color: 0xef4444,
+                    transparent: true,
+                    opacity: 0.2,
+                    side: THREE.DoubleSide
+                });
+                
+                const shapeMesh = new THREE.Mesh(shapeGeometry, shapeMaterial);
+                
+                // Rotate shape to match our coordinate system
+                shapeMesh.rotation.x = -Math.PI / 2;
+                shapeMesh.position.z = 0;
+                
+                // Add to scene
+                this.scene.add(shapeMesh);
+            }
+            
+            /**
+             * Start rendering and show the container
+             */
+            show() {
+                // Show the container
+                this.container.style.display = 'block';
+                
+                // Trigger resize to ensure correct dimensions
+                this.onWindowResize();
+            }
+            
+            /**
+             * Hide the container and pause rendering
+             */
+            hide() {
+                // Hide the container
+                this.container.style.display = 'none';
+            }
+            
+            /**
+             * Clean up resources
+             */
+            dispose() {
+                // Stop animation loop
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                    this.animationId = null;
+                }
+                
+                // Dispose of THREE.js objects
+                this.clearScene();
+                
+                if (this.renderer) {
+                    this.renderer.dispose();
+                    this.container.removeChild(this.renderer.domElement);
+                }
+                
+                // Remove event listeners
+                window.removeEventListener('resize', this.onWindowResize);
+            }
+        }
+
+        /**
+         * Main application class
+         */
+        class SkylineApp {
+            constructor() {
+                this.manualBuildings = [];
+                this.currentBuildings = [];
+                this.currentSkyline = [];
+                
+                // Set up DOM elements
+                this.setupElements();
+                
+                // Initialize UI components
+                this.setupUI();
+                
+                // Initialize visualization components
+                this.setupRenderers();
+                
+                // Set up event listeners
+                this.setupEventListeners();
+            }
+            
+            setupElements() {
+                // Input elements
+                this.buildingsInput = document.getElementById('buildings-input');
+                this.leftInput = document.getElementById('left-input');
+                this.rightInput = document.getElementById('right-input');
+                this.heightInput = document.getElementById('height-input');
+                this.buildingsListContainer = document.getElementById('buildings-list-container');
+                
+                // Button elements
+                this.visualizeBtn = document.getElementById('visualize-btn');
+                this.clearBtn = document.getElementById('clear-btn');
+                this.addBuildingBtn = document.getElementById('add-building-btn');
+                this.visualizeManualBtn = document.getElementById('visualize-manual-btn');
+                this.clearManualBtn = document.getElementById('clear-manual-btn');
+                this.toggleViewBtn = document.getElementById('toggle-view-btn');
+                this.fullscreenBtn = document.getElementById('fullscreen-btn');
+                
+                // Canvas elements
+                this.skylineCanvas = document.getElementById('skyline-canvas');
+                this.threeContainer = document.getElementById('three-canvas');
+                this.canvasContainer = document.querySelector('.canvas-container');
+                
+                // Result elements
+                this.skylineResult = document.getElementById('skyline-result');
+            }
+            
+            setupUI() {
+                // Setup tabs
+                setupTabs();
+                
+                // Setup canvas
+                setupCanvas();
+                
+                // Initialize buildings list
+                this.updateBuildingsList();
+            }
+            
+            setupRenderers() {
+                // Initialize 2D renderer
+                this.renderer2D = new SkylineRenderer(this.skylineCanvas);
+                
+                // Initialize 3D renderer
+                this.renderer3D = new SkylineThreeRenderer(this.threeContainer);
+                
+                // Default to 2D view
+                this.currentView = '2D';
+                this.renderer3D.hide();
+            }
+            
+            setupEventListeners() {
+                // Visualization buttons
+                this.visualizeBtn.addEventListener('click', () => this.visualizeFromArray());
+                this.clearBtn.addEventListener('click', () => this.clearArrayInput());
+                
+                // Manual input buttons
+                this.addBuildingBtn.addEventListener('click', () => this.addBuilding());
+                this.visualizeManualBtn.addEventListener('click', () => this.visualizeFromManual());
+                this.clearManualBtn.addEventListener('click', () => this.clearManualInput());
+                
+                // View controls
+                this.toggleViewBtn.addEventListener('click', () => this.toggleView());
+                this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+            }
+            
+            /**
+             * Visualize skyline from array input
+             */
+            visualizeFromArray() {
+                try {
+                    const inputText = this.buildingsInput.value.trim();
+                    
+                    if (!inputText) {
+                        throw new Error('Please enter building data');
+                    }
+                    
+                    const buildings = parseBuildingsInput(inputText);
+                    this.visualizeSkyline(buildings);
+                } catch (error) {
+                    alert(`Error: ${error.message}`);
+                }
+            }
+            
+            /**
+             * Visualize skyline from manual input
+             */
+            visualizeFromManual() {
+                if (this.manualBuildings.length === 0) {
+                    alert('Please add at least one building');
+                    return;
+                }
+                
+                this.visualizeSkyline(this.manualBuildings);
+            }
+            
+            /**
+             * Main visualization function
+             */
+            visualizeSkyline(buildings) {
+                // Store current buildings
+                this.currentBuildings = buildings;
+                
+                // Compute skyline
+                const skyline = getSkyline(buildings);
+                this.currentSkyline = skyline;
+                
+                // Update the 2D visualization
+                this.renderer2D.draw(buildings, skyline);
+                
+                // Update the 3D visualization
+                this.renderer3D.draw(buildings, skyline, {
+                    maxX: this.renderer2D.maxX,
+                    maxHeight: this.renderer2D.maxHeight
+                });
+                
+                // Update the skyline result text
+                this.updateSkylineResult(skyline);
+            }
+            
+            /**
+             * Add a building from manual input
+             */
+            addBuilding() {
+                try {
+                    const left = parseInt(this.leftInput.value);
+                    const right = parseInt(this.rightInput.value);
+                    const height = parseInt(this.heightInput.value);
+                    
+                    // Validate inputs
+                    if (isNaN(left) || isNaN(right) || isNaN(height)) {
+                        throw new Error('All values must be numbers');
+                    }
+                    
+                    if (left >= right) {
+                        throw new Error('Left position must be less than right position');
+                    }
+                    
+                    if (height <= 0) {
+                        throw new Error('Height must be greater than 0');
+                    }
+                    
+                    // Add building
+                    this.manualBuildings.push([left, right, height]);
+                    
+                    // Clear inputs
+                    this.leftInput.value = '';
+                    this.rightInput.value = '';
+                    this.heightInput.value = '';
+                    
+                    // Focus on first input
+                    this.leftInput.focus();
+                    
+                    // Update buildings list
+                    this.updateBuildingsList();
+                } catch (error) {
+                    alert(`Error: ${error.message}`);
+                }
+            }
+            
+            /**
+             * Update the buildings list display
+             */
+            updateBuildingsList() {
+                const container = this.buildingsListContainer;
+                container.innerHTML = '';
+                
+                if (this.manualBuildings.length === 0) {
+                    container.innerHTML = '<p class="text-gray-500 italic p-2">No buildings added yet</p>';
+                    return;
+                }
+                
+                const list = document.createElement('ul');
+                list.className = 'buildings-list';
+                
+                this.manualBuildings.forEach((building, index) => {
+                    const [left, right, height] = building;
+                    
+                    const item = document.createElement('li');
+                    item.innerHTML = `
+                        <span>Building ${index + 1}: [${left}, ${right}, ${height}]</span>
+                        <button data-index="${index}">Remove</button>
+                    `;
+                    
+                    // Add remove event listener
+                    const removeBtn = item.querySelector('button');
+                    removeBtn.addEventListener('click', (e) => {
+                        const index = parseInt(e.target.getAttribute('data-index'));
+                        this.removeBuilding(index);
+                    });
+                    
+                    list.appendChild(item);
+                });
+                
+                container.appendChild(list);
+            }
+            
+            /**
+             * Remove a building from the manual list
+             */
+            removeBuilding(index) {
+                this.manualBuildings.splice(index, 1);
+                this.updateBuildingsList();
+            }
+            
+            /**
+             * Update the skyline result display
+             */
+            updateSkylineResult(skyline) {
+                if (skyline.length === 0) {
+                    this.skylineResult.textContent = 'No buildings to create a skyline';
+                    return;
+                }
+                
+                const skylineJSON = JSON.stringify(skyline);
+                this.skylineResult.textContent = skylineJSON;
+            }
+            
+            /**
+             * Clear array input
+             */
+            clearArrayInput() {
+                this.buildingsInput.value = '';
+                this.currentBuildings = [];
+                this.currentSkyline = [];
+                
+                // Clear visualizations
+                this.renderer2D.draw([], []);
+                this.renderer3D.draw([], [], { maxX: 10, maxHeight: 10 });
+                
+                // Update skyline result
+                this.updateSkylineResult([]);
+            }
+            
+            /**
+             * Clear manual input
+             */
+            clearManualInput() {
+                this.manualBuildings = [];
+                this.leftInput.value = '';
+                this.rightInput.value = '';
+                this.heightInput.value = '';
+                
+                // Update buildings list
+                this.updateBuildingsList();
+                
+                // Clear visualizations if we're in manual mode
+                const activeTab = document.querySelector('.tab-btn.active').getAttribute('data-tab');
+                if (activeTab === 'manual-input') {
+                    this.currentBuildings = [];
+                    this.currentSkyline = [];
+                    
+                    // Clear visualizations
+                    this.renderer2D.draw([], []);
+                    this.renderer3D.draw([], [], { maxX: 10, maxHeight: 10 });
+                    
+                    // Update skyline result
+                    this.updateSkylineResult([]);
+                }
+            }
+            
+            /**
+             * Toggle between 2D and 3D views
+             */
+            toggleView() {
+                if (this.currentView === '2D') {
+                    // Switch to 3D
+                    this.currentView = '3D';
+                    this.skylineCanvas.style.display = 'none';
+                    this.renderer3D.show();
+                    this.toggleViewBtn.textContent = 'Switch to 2D';
+                } else {
+                    // Switch to 2D
+                    this.currentView = '2D';
+                    this.skylineCanvas.style.display = 'block';
+                    this.renderer3D.hide();
+                    this.toggleViewBtn.textContent = 'Switch to 3D';
+                }
+            }
+            
+            /**
+             * Toggle fullscreen mode
+             */
+            toggleFullscreen() {
+                if (this.canvasContainer.classList.contains('fullscreen')) {
+                    // Exit fullscreen
+                    this.canvasContainer.classList.remove('fullscreen');
+                    this.fullscreenBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm2-1h10a1 1 0 011 1v10a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z" clip-rule="evenodd" />
+                            <path d="M5 5h2v2H5V5zm0 8h2v2H5v-2zm8-8h2v2h-2V5zm0 8h2v2h-2v-2z" />
+                        </svg>
+                        Fullscreen
+                    `;
+                } else {
+                    // Enter fullscreen
+                    this.canvasContainer.classList.add('fullscreen');
+                    this.fullscreenBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M5 2a1 1 0 00-1 1v4a1 1 0 102 0V4h3a1 1 0 100-2H5zm10 16a1 1 0 001-1v-4a1 1 0 10-2 0v3h-3a1 1 0 100 2h4z" clip-rule="evenodd" />
+                        </svg>
+                        Exit Fullscreen
+                    `;
+                }
+                
+                // Trigger resize for both renderers
+                window.dispatchEvent(new Event('resize'));
+            }
+        }
+
+        // Initialize the app when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            const app = new SkylineApp();
+        });
+    </script>
+
+</body>
+</html>
