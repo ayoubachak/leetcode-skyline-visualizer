@@ -81,6 +81,19 @@
             z-index: 1000;
         }
 
+        /* Make buttons visible in dark mode */
+        .btn-3d-mode {
+            background-color: rgba(255, 255, 255, 0.85) !important;
+            color: #1a1a2e !important;
+            font-weight: 600;
+            border: 2px solid rgba(255, 255, 255, 0.7);
+            text-shadow: 0 1px 1px rgba(255, 255, 255, 0.5);
+        }
+
+        .btn-3d-mode:hover {
+            background-color: rgba(255, 255, 255, 1) !important;
+        }
+
         @media (max-width: 640px) {
             .buildings-list {
                 max-height: 200px;
@@ -580,14 +593,19 @@
                 this.camera.position.set(20, 20, 40);
                 this.camera.lookAt(0, 0, 0);
                 
-                // Create renderer with shadows enabled
+                // Create renderer with shadows enabled and higher quality
                 this.renderer = new THREE.WebGLRenderer({ 
                     antialias: true,
-                    shadowMapEnabled: true 
+                    shadowMapEnabled: true,
+                    precision: "highp"
                 });
                 this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
                 this.renderer.shadowMap.enabled = true;
                 this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                this.renderer.physicallyCorrectLights = true;
+                this.renderer.outputEncoding = THREE.sRGBEncoding;
+                this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                this.renderer.toneMappingExposure = 1.2;
                 this.container.appendChild(this.renderer.domElement);
                 
                 // Create orbit controls
@@ -596,46 +614,61 @@
                 this.controls.dampingFactor = 0.05;
                 
                 // Add ambient light
-                const ambientLight = new THREE.AmbientLight(0x404060, 0.6); // Blueish ambient light
+                const ambientLight = new THREE.AmbientLight(0x404060, 0.4); // Softer ambient light
                 this.scene.add(ambientLight);
                 
-                // Add directional light with shadows
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(15, 30, 15);
+                // Add primary directional light with enhanced shadows
+                const directionalLight = new THREE.DirectionalLight(0xfffaf0, 1.2); // Brighter main light
+                directionalLight.position.set(50, 80, 50); // Position for better shadows
                 directionalLight.castShadow = true;
-                directionalLight.shadow.mapSize.width = 2048;
-                directionalLight.shadow.mapSize.height = 2048;
+                directionalLight.shadow.mapSize.width = 4096; // Higher resolution shadows
+                directionalLight.shadow.mapSize.height = 4096;
                 directionalLight.shadow.camera.near = 0.5;
-                directionalLight.shadow.camera.far = 100;
-                directionalLight.shadow.camera.left = -50;
-                directionalLight.shadow.camera.right = 50;
-                directionalLight.shadow.camera.top = 50;
-                directionalLight.shadow.camera.bottom = -50;
+                directionalLight.shadow.camera.far = 500;
+                directionalLight.shadow.camera.left = -100;
+                directionalLight.shadow.camera.right = 100;
+                directionalLight.shadow.camera.top = 100;
+                directionalLight.shadow.camera.bottom = -100;
+                directionalLight.shadow.bias = -0.0001; // Reduce shadow acne
                 this.scene.add(directionalLight);
                 
-                // Add a secondary light source
-                const secondaryLight = new THREE.DirectionalLight(0xffffcc, 0.4); // Warm secondary light
-                secondaryLight.position.set(-5, 10, -10);
+                // Add a secondary light source (moon/ambient city glow)
+                const secondaryLight = new THREE.DirectionalLight(0xc4e0ff, 0.5); // Bluer secondary light
+                secondaryLight.position.set(-30, 40, -20);
                 this.scene.add(secondaryLight);
                 
-                // Add grid helper - lighter color for better contrast with dark background
-                const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x666666);
-                gridHelper.position.y = -0.01;
+                // Add a subtle point light to simulate city glow
+                const cityGlow = new THREE.PointLight(0xffaa55, 0.8, 100);
+                cityGlow.position.set(20, 5, 20);
+                this.scene.add(cityGlow);
+                
+                // Add grid helper - more subtle
+                const gridHelper = new THREE.GridHelper(100, 100, 0x222233, 0x333344);
+                gridHelper.position.y = 0.01;
                 this.scene.add(gridHelper);
                 
-                // Add floor plane to receive shadows
-                const floorGeometry = new THREE.PlaneGeometry(100, 100);
-                const floorMaterial = new THREE.MeshLambertMaterial({ 
-                    color: 0x222222, 
+                // Create realistic city floor with reflections
+                const floorGeometry = new THREE.PlaneGeometry(300, 300);
+                const floorMaterial = new THREE.MeshStandardMaterial({ 
+                    color: 0x111122, 
                     side: THREE.DoubleSide,
-                    transparent: true,
-                    opacity: 0.7
+                    roughness: 0.3, // Lower roughness for more reflections
+                    metalness: 0.8,  // Higher metalness for road-like reflection
+                    envMapIntensity: 0.8
                 });
                 const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-                floor.rotation.x = Math.PI / 2;
-                floor.position.y = -0.02;
+                floor.rotation.x = -Math.PI / 2; // Horizontal
+                floor.position.y = 0;
                 floor.receiveShadow = true;
                 this.scene.add(floor);
+                
+                // Add fog for depth
+                this.scene.fog = new THREE.FogExp2(0x090b18, 0.0025);
+                
+                // Add subtle environment lighting
+                const hemiLight = new THREE.HemisphereLight(0xffffbb, 0x080820, 0.25);
+                hemiLight.position.set(0, 50, 0);
+                this.scene.add(hemiLight);
                 
                 // Add axes helper
                 const axesHelper = new THREE.AxesHelper(20);
@@ -678,8 +711,8 @@
                 // Draw buildings
                 this._drawBuildings(buildings);
                 
-                // Draw skyline
-                this._drawSkyline(skyline);
+                // Draw skyline outline (without the red fill)
+                this._drawSkylineOutline(skyline);
                 
                 // Position camera for best view
                 this.positionCamera();
@@ -715,8 +748,8 @@
                 // Animate camera position
                 gsap.to(this.camera.position, {
                     x: this.maxX / 2,
-                    y: this.maxHeight / 2,
-                    z: cameraDistance,
+                    y: this.maxHeight * 0.6, // Higher position to see reflections
+                    z: cameraDistance * 1.2,
                     duration: 1.5,
                     ease: "power2.inOut",
                     onComplete: () => {
@@ -737,18 +770,39 @@
                     const hue = (left * 37 + height * 71) % 360;
                     const color = new THREE.Color(`hsl(${hue}, 85%, 65%)`);
                     
-                    // Create geometry and material
+                    // Create geometry and enhanced material
                     const geometry = new THREE.BoxGeometry(width, height, buildingDepth);
-                    const material = new THREE.MeshPhongMaterial({ 
+                    
+                    // Create materials for different sides of buildings
+                    const glassMaterial = new THREE.MeshPhysicalMaterial({ 
                         color: color,
                         transparent: true,
-                        opacity: 0.85,
-                        shininess: 30,
-                        specular: 0x111111
+                        opacity: 0.9,
+                        roughness: 0.05,
+                        metalness: 0.9,
+                        reflectivity: 1,
+                        clearcoat: 0.5,
+                        clearcoatRoughness: 0.1
                     });
                     
+                    const sideMaterial = new THREE.MeshPhysicalMaterial({
+                        color: new THREE.Color(`hsl(${hue}, 75%, 50%)`),
+                        roughness: 0.7,
+                        metalness: 0.2
+                    });
+                    
+                    // Create multiMaterial for different sides
+                    const materials = [
+                        sideMaterial,  // right
+                        sideMaterial,  // left
+                        sideMaterial,  // top
+                        sideMaterial,  // bottom
+                        glassMaterial, // front
+                        glassMaterial  // back
+                    ];
+                    
                     // Create mesh
-                    const building = new THREE.Mesh(geometry, material);
+                    const building = new THREE.Mesh(geometry, materials);
                     
                     // Enable shadows
                     building.castShadow = true;
@@ -793,10 +847,17 @@
                     sprite.scale.set(2.5, 2.5, 1);
                     sprite.position.set(left + width / 2, height / 2, buildingDepth / 2 + 0.2);
                     this.scene.add(sprite);
+                    
+                    // Add subtle point light at top of tall buildings
+                    if (height > 10) {
+                        const buildingLight = new THREE.PointLight(new THREE.Color(`hsl(${hue}, 90%, 70%)`), 0.2, 20);
+                        buildingLight.position.set(left + width / 2, height + 0.5, 0);
+                        this.scene.add(buildingLight);
+                    }
                 });
             }
             
-            _drawSkyline(skyline) {
+            _drawSkylineOutline(skyline) {
                 if (skyline.length === 0) return;
                 
                 // Create a line to represent the skyline
@@ -829,6 +890,7 @@
                 
                 // Create line
                 const line = new THREE.Line(geometry, material);
+                line.position.z = 3; // Move slightly forward to be visible in front of buildings
                 
                 // Add to scene
                 this.scene.add(line);
@@ -841,50 +903,8 @@
                     opacity: 0.3
                 });
                 const glowLine = new THREE.Line(geometry, glowMaterial);
+                glowLine.position.z = 3.1;
                 this.scene.add(glowLine);
-                
-                // Add skyline area visualization (transparent fill)
-                const shapePoints = [];
-                
-                // Add ground level points
-                shapePoints.push(new THREE.Vector2(skyline[0][0], 0));
-                
-                // Add skyline points
-                for (let i = 0; i < skyline.length; i++) {
-                    const [x, y] = skyline[i];
-                    shapePoints.push(new THREE.Vector2(x, y));
-                }
-                
-                // Add last ground point to close the shape
-                shapePoints.push(new THREE.Vector2(skyline[skyline.length-1][0], 0));
-                
-                // Create shape and extrude geometry
-                const shape = new THREE.Shape(shapePoints);
-                const extrudeSettings = {
-                    steps: 1,
-                    depth: 5,
-                    bevelEnabled: false
-                };
-                
-                const shapeGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-                const shapeMaterial = new THREE.MeshPhongMaterial({
-                    color: 0xff4444,
-                    emissive: 0x330000,
-                    transparent: true,
-                    opacity: 0.3,
-                    side: THREE.DoubleSide,
-                    specular: 0xffffff,
-                    shininess: 50
-                });
-                
-                const shapeMesh = new THREE.Mesh(shapeGeometry, shapeMaterial);
-                
-                // Rotate shape to match our coordinate system
-                shapeMesh.rotation.x = -Math.PI / 2;
-                shapeMesh.position.z = 0;
-                
-                // Add to scene
-                this.scene.add(shapeMesh);
             }
             
             /**
@@ -1220,12 +1240,16 @@
                     this.skylineCanvas.style.display = 'none';
                     this.renderer3D.show();
                     this.toggleViewBtn.textContent = 'Switch to 2D';
+                    this.toggleViewBtn.classList.add('btn-3d-mode');
+                    this.fullscreenBtn.classList.add('btn-3d-mode');
                 } else {
                     // Switch to 2D
                     this.currentView = '2D';
                     this.skylineCanvas.style.display = 'block';
                     this.renderer3D.hide();
                     this.toggleViewBtn.textContent = 'Switch to 3D';
+                    this.toggleViewBtn.classList.remove('btn-3d-mode');
+                    this.fullscreenBtn.classList.remove('btn-3d-mode');
                 }
             }
             
@@ -1238,7 +1262,7 @@
                     this.canvasContainer.classList.remove('fullscreen');
                     this.fullscreenBtn.innerHTML = `
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm2-1h10a1 1 0 011 1v10a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z" clip-rule="evenodd" />
+                            <path fill-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-1-1V5zm2-1h10a1 1 0 011 1v10a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z" clip-rule="evenodd" />
                             <path d="M5 5h2v2H5V5zm0 8h2v2H5v-2zm8-8h2v2h-2V5zm0 8h2v2h-2v-2z" />
                         </svg>
                         Fullscreen
@@ -1262,6 +1286,19 @@
         // Initialize the app when the DOM is fully loaded
         document.addEventListener('DOMContentLoaded', () => {
             const app = new SkylineApp();
+            
+            // Automatically visualize the default input when the page loads
+            setTimeout(() => {
+                try {
+                    const defaultInput = document.getElementById('buildings-input').value.trim();
+                    if (defaultInput) {
+                        const buildings = parseBuildingsInput(defaultInput);
+                        app.visualizeSkyline(buildings);
+                    }
+                } catch (error) {
+                    console.error("Error auto-visualizing default input:", error);
+                }
+            }, 300); // Small delay to ensure everything is initialized
         });
     </script>
 
